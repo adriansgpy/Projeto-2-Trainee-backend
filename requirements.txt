@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+pydantic
+python-jose[cryptography]   # Para JWT
+passlib[bcrypt]             # Para hash de senhas
+motor                       # MongoDB async driver
+python-dotenv               # Para variáveis de ambiente
+requests                    # Para chamadas externas (ex: LLM)
