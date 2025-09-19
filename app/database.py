@@ -8,3 +8,6 @@ def get_users_collection():
     return db["usuarios"]
 
 
+def get_personagens_collection():
+    return db["personagens"]
+
