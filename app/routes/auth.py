@@ -6,8 +6,7 @@ from passlib.context import CryptContext
 from app.database import get_users_collection
 from app.models.UsuarioModel import UsuarioModel, UsuarioLogin
 
-# Configurações JWT
-SECRET_KEY = "sua_chave_super_secreta_aqui"  # troque para algo seguro
+SECRET_KEY = "sua_chave_super_secreta_aqui" 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 24 * 60
 
@@ -15,8 +14,6 @@ users_collection = get_users_collection()
 router_auth = APIRouter(prefix="/auth", tags=["auth"])
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-
-# Funções utilitárias
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
 
@@ -63,13 +60,10 @@ def realizar_login(login_data: UsuarioLogin):
     print("Hash banco:", user["senha"])
     print("igual:", verify_password(login_data.senha, user["senha"]))
 
-
     return {
         "access_token": access_token,
         "token_type": "bearer"
     }
-
-
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
