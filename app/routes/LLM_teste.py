@@ -3,6 +3,7 @@ from pydantic import BaseModel
 import requests
 import os
 import json
+import re
 
 router = APIRouter()
 
@@ -13,11 +14,14 @@ class ChapterStartRequest(BaseModel):
     chapter: int
     context: str
     player_state: dict
+    rules: list[str] = []
+
 
 class TurnRequest(BaseModel):
     last_narrative: str
     action: str
     player_state: dict
+    rules: list[str] = []
 
 def call_gemini(prompt: str):
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
@@ -30,30 +34,58 @@ def call_gemini(prompt: str):
 
     try:
         return response.json()["candidates"][0]["content"]["parts"][0]["text"]
-    except Exception:
-        raise HTTPException(status_code=500, detail="Erro ao extrair resposta do LLM")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao extrair resposta do LLM: {e}")
+
 
 def parse_llm_json(text: str):
     """
-    Remove blocos de markdown ```json ... ``` e retorna JSON válido
+    Extrai o primeiro JSON válido da resposta do LLM.
+    Remove possíveis blocos ```json ... ``` extras.
     """
     cleaned = text.strip()
+
     if cleaned.startswith("```json"):
         cleaned = cleaned[7:]
     if cleaned.endswith("```"):
         cleaned = cleaned[:-3]
-    return json.loads(cleaned)
+
+    match = re.search(r"\{[\s\S]*\}", cleaned)
+    if not match:
+        raise ValueError(f"Nenhum JSON encontrado: {text}")
+
+    return json.loads(match.group(0))
+
+
+def validate_response(parsed: dict, required_fields: list[str]):
+    """
+    Garante que os campos obrigatórios estão presentes.
+    """
+    for field in required_fields:
+        if field not in parsed:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Campo obrigatório '{field}' ausente na resposta do LLM: {parsed}"
+            )
+    return parsed
+
 
 @router.post("/start_chapter")
 def start_chapter(req: ChapterStartRequest):
-    prompt = f"""
-Você é o narrador do jogo Black Mesa. Narre as cenas com detalhes respeitando a história do jogo half life, não faça textos gigantes, narre de forma cativante
+    rules_text = "\n".join([f"- {r}" for r in req.rules]) if req.rules else "Nenhuma regra extra."
 
-Regras:
+    prompt = f"""
+Você é o narrador do jogo Black Mesa. Narre as cenas com detalhes respeitando a história do jogo Half-Life. 
+Não faça textos gigantes, narre de forma cativante.
+
+Regras globais:
 - Narre APENAS o início do capítulo atual.
 - Nunca avance para outro capítulo sem ser instruído.
 - Respeite a história original de Half-Life.
 - SEMPRE responda em JSON.
+
+Regras específicas deste capítulo:
+{rules_text}
 
 Formato esperado:
 {{
@@ -70,22 +102,30 @@ Estado inicial do jogador: {req.player_state}
 
     try:
         parsed = parse_llm_json(generated_text)
-    except Exception:
-        raise HTTPException(status_code=500, detail=f"LLM não retornou JSON válido: {generated_text}")
+        validate_response(parsed, ["narrativa", "choices"])
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"LLM não retornou JSON válido: {generated_text} | Erro: {e}")
 
     return parsed
 
 
 @router.post("/turn")
 def turn(req: TurnRequest):
-    prompt = f"""
-Você é o narrador do jogo Black Mesa. Narre as cenas com detalhes respeitando a história do jogo half life, não faça textos gigantes, narre de forma cativante
+    rules_text = "\n".join([f"- {r}" for r in req.rules]) if req.rules else "Nenhuma regra extra."
 
-Regras:
+    prompt = f"""
+Você é o narrador do jogo Black Mesa. Narre as cenas com detalhes respeitando a história do jogo Half-Life. 
+Não faça textos gigantes, narre de forma cativante.
+
+Regras globais:
 - Narre o que acontece APENAS após a ação escolhida.
 - Nunca avance de capítulo sem instrução.
 - Respeite a história original de Half-Life.
+- Sempre indique claramente se o jogador levou dano, e quantos pontos perdeu.
 - SEMPRE responda em JSON.
+
+Regras específicas deste capítulo:
+{rules_text}
 
 Formato esperado:
 {{
@@ -108,7 +148,8 @@ Estado do jogador: {req.player_state}
 
     try:
         parsed = parse_llm_json(generated_text)
-    except Exception:
-        raise HTTPException(status_code=500, detail=f"LLM não retornou JSON válido: {generated_text}")
+        validate_response(parsed, ["narrativa", "efeitos", "choices"])
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"LLM não retornou JSON válido: {generated_text} | Erro: {e}")
 
     return parsed
