@@ -37,6 +37,7 @@ def register_user(usuario: UsuarioModel):
         "usuario": usuario.nomeUsuario,
         "senha": hashed_password
     }
+    
     users_collection.insert_one(user)
     return {"msg": "Usuário registrado com sucesso"}
 
