@@ -23,13 +23,25 @@ class Character(BaseModel):
     image: Optional[str] = ""
 
 @router_personagem.post("/")
+@router_personagem.post("/")
 def create_character(character: Character, username: str = Depends(get_current_user)):
+    existing = characters_collection.find_one({
+        "nome": character.nome,
+        "owner_username": username
+    })
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail="Você já possui um personagem com esse nome"
+        )
+
     character_dict = character.dict()
     character_dict.update({"owner_username": username})
 
     result = characters_collection.insert_one(character_dict)
     created = characters_collection.find_one({"_id": result.inserted_id})
     return json.loads(dumps(created))
+
 
 @router_personagem.get("/")
 def get_characters(username: str = Depends(get_current_user)):

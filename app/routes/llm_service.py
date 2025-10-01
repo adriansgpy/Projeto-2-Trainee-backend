@@ -69,20 +69,16 @@ def safe_json_parse(text: str) -> dict:
         except:
             data = {"narrativa": [text], "escolhas": ["Atacar", "Defender", "Usar Item"], "status": {}, "turn_result": {}}
 
-    # normaliza narrativa
     narrativa = []
     if "narrativa" in data and isinstance(data["narrativa"], list):
         narrativa = data["narrativa"]
     elif "narrativa" in data and isinstance(data["narrativa"], str):
         narrativa = [line.strip() for line in data["narrativa"].split("\n") if line.strip()]
 
-    # normaliza escolhas
     escolhas = data.get("escolhas") or data.get("choices") or ["Atacar", "Defender", "Usar Item"]
 
-    # normaliza status
     status = data.get("status") or {}
 
-    # normaliza turn_result
     turn_result = data.get("turn_result") or {
         "player": {"hp_change": 0, "stamina_change": 0},
         "enemy": {"hp_change": 0, "stamina_change": 0}
@@ -94,6 +90,15 @@ def safe_json_parse(text: str) -> dict:
         "status": status,
         "turn_result": turn_result
     }
+
+
+def check_game_over(player: dict, enemy: dict) -> Optional[dict]:
+    """Retorna um dict com resultado se algum HP for zero, ou None se o jogo continuar."""
+    if player["hp"] <= 0:
+        return {"game_over": True, "winner": "enemy", "loser": "player"}
+    elif enemy["hp"] <= 0:
+        return {"game_over": True, "winner": "player", "loser": "enemy"}
+    return None
 
 
 
@@ -136,6 +141,11 @@ def generate_dynamic_turn(player_action: str, game_state: dict) -> dict:
     data["player"] = data["status"]["player"]
     data["enemy"] = data["status"]["enemy"]
 
+    game_over = check_game_over(data["status"]["player"], data["status"]["enemy"])
+    if game_over:
+        data["game_over"] = game_over
+
+
     return data
 
 
@@ -162,7 +172,7 @@ def generate_initial_narrative(game_state: dict) -> dict:
         """
     text = call_gemini(prompt, max_output_tokens=800)
     data = safe_json_parse(text)
-    # se não houver status, preenche com game_state
+
     if not data["status"]:
         data["status"] = {"player": game_state["player"], "enemy": game_state["enemy"]}
     return data
@@ -179,4 +189,9 @@ def start_game(request: StartGameRequest):
 def process_turn(action: PlayerAction):
     game_state = action.state.dict()
     response = generate_dynamic_turn(action.action, game_state)
+    
+    game_over = check_game_over(response["status"]["player"], response["status"]["enemy"])
+    if game_over:
+        response["game_over"] = game_over
+
     return response
