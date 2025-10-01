@@ -12,7 +12,12 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 24 * 60
 
 users_collection = get_users_collection()
 router_auth = APIRouter(prefix="/auth", tags=["auth"])
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# 🔹 Usando argon2
+pwd_context = CryptContext(
+    schemes=["argon2"],
+    deprecated="auto"
+)
 
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
@@ -26,6 +31,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
+# ---------------- SIGNUP ----------------
 @router_auth.post("/signup")
 def register_user(usuario: UsuarioModel):
     if users_collection.find_one({"usuario": usuario.nomeUsuario}):
@@ -41,25 +47,29 @@ def register_user(usuario: UsuarioModel):
     users_collection.insert_one(user)
     return {"msg": "Usuário registrado com sucesso"}
 
+# ---------------- LOGIN ----------------
 @router_auth.post("/login")
 def realizar_login(login_data: UsuarioLogin):
     user = users_collection.find_one({"usuario": login_data.nomeUsuario})
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuário não encontrado")
 
-    if not verify_password(login_data.senha, user["senha"]):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Senha incorreta")
+    hashed_password = user.get("senha")
+    if not hashed_password:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Hash da senha inválido no banco")
 
+    # Verifica senha com tratamento seguro
+    try:
+        if not verify_password(login_data.senha, hashed_password):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Senha incorreta")
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Erro na verificação da senha: {e}")
 
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": login_data.nomeUsuario},
         expires_delta=access_token_expires
     )
-
-    print("Senha:", login_data.senha)
-    print("Hash banco:", user["senha"])
-    print("igual:", verify_password(login_data.senha, user["senha"]))
 
     return {
         "access_token": access_token,

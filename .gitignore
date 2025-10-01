@@ -1,0 +1,14 @@
+#gitignore 
+
+# Ambiente virtual
+venv/
+.venv/
+
+# Arquivos Python compilados
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Config do VSCode/PyCharm
+.vscode/
+.idea/
