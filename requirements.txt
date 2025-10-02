@@ -1,8 +1,15 @@
-fastapi
-uvicorn
-pydantic
+#requisitos para rodar o projeto
+fastapi                     # api
+uvicorn                     # rodar servidor
+pydantic                    # modelos
 python-jose[cryptography]   # Para JWT
-passlib[bcrypt]             # Para hash de senhas
-motor                       # MongoDB async driver
+passlib[argon2]             # Para hash de senhas
 python-dotenv               # Para variáveis de ambiente
 requests                    # Para chamadas externas (ex: LLM)
+pymongo                     # Driver para comunicar com o mongo
+
+# base de dados 
+MongoDB_Conexao             # Conexão local simples padrão (Nome RPG - mongodb://localhost:27017)
+mongod                      # Serviço essencial para o mongo 
+MongoDB_Compass             # Opcional para visualizar base de dados
+MongoDB_Shell               # Opcional para rodar comandos

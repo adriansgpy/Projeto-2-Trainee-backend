@@ -6,7 +6,7 @@ from passlib.context import CryptContext
 from app.database import get_users_collection
 from app.models.UsuarioModel import UsuarioModel, UsuarioLogin
 
-SECRET_KEY = "sua_chave_super_secreta_aqui" 
+SECRET_KEY = "minhachave123" 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 24 * 60
 
