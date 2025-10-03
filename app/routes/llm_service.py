@@ -137,6 +137,7 @@ def generate_dynamic_turn(player_action: str, game_state: dict) -> dict:
 
     Regras:
     - Respeite a stamina de cada personagem em cada turno
+    - Leve em conta a história da lenda para realizar o jogo
     - Não coloque o HP e stamina dos personagens na narrativa
     - Não gere textos gigantes
     - Narre a luta de forma zoeira e cômica.
@@ -184,6 +185,7 @@ def generate_initial_narrative(game_state: dict) -> dict:
 
     Regras:
     - Narre a entrada da lenda e do jogador de forma zoeira.
+    - Leve em conta a história da lenda para realizar o jogo
     - Sugira 3 ações iniciais.
     - Responda apenas em JSON válido no formato:
     {{
