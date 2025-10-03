@@ -17,7 +17,6 @@ class Character(BaseModel):
     nome: str
     role: str
     hpAtual: int
-    stamina: int
     ataqueEspecial: str
     image: Optional[str] = ""  # Mantido opcional
 

@@ -4,33 +4,29 @@ from typing import List, Optional
 import requests
 import json
 
-# =====================================
-# CONFIG
-# =====================================
 GOOGLE_API_KEY = "AIzaSyCSB2VvJkwkCcHbXL5m1ganWJ3xn15Pui8"
 
-PRIMARY_MODEL = "gemini-2.5-flash-lite"   # Modelo principal
-SECONDARY_MODEL = "gemini-2.0-flash-lite" # Fallback
-BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
+MODEL = "gemini-2.0-flash"  
+BASE_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent?key={GOOGLE_API_KEY}"
 
-# =====================================
-# MODELOS Pydantic
-# =====================================
+# ---------------- MODELOS ----------------
 class PlayerState(BaseModel):
     nome: str
+    classe: Optional[str] = "Guerreiro"  # <- classe do jogador
     hp: int
     max_hp: int
     stamina: int
     max_stamina: int
+    inventario: List[str]
 
 class EnemyState(BaseModel):
     nome: str
+    descricao: Optional[str] = ""
     hp: int
     max_hp: int
     stamina: int
     max_stamina: int
-    descricao: str       # NOVO: descrição da lenda
-    ataqueEspecial: str  # NOVO: ataque especial
+
 
 class GameState(BaseModel):
     player: PlayerState
@@ -46,44 +42,26 @@ class PlayerAction(BaseModel):
     action: str
     state: GameState
 
+# ---------------- ROUTER ----------------
 llm_router = APIRouter(prefix="/llm", tags=["LLM"])
 
-# =====================================
-# FUNÇÕES DE CHAMADA LLM
-# =====================================
-def call_gemini_model(prompt: str, model: str, max_output_tokens: int = 1000) -> str:
-    """Chama um modelo específico do Gemini"""
-    url = f"{BASE_URL}/{model}:generateContent?key={GOOGLE_API_KEY}"
+# ---------------- FUNÇÕES AUXILIARES ----------------
+def call_gemini(prompt: str, max_output_tokens: int = 1000) -> str:
     data = {
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {"temperature": 0.5, "maxOutputTokens": max_output_tokens}
     }
-    response = requests.post(url, headers={"Content-Type": "application/json"}, json=data, timeout=15)
-    response.raise_for_status()
-    resp_json = response.json()
-    return resp_json["candidates"][0]["content"]["parts"][0]["text"].strip()
-
-
-def call_gemini_with_fallback(prompt: str, max_output_tokens: int = 1000) -> str:
-    """Tenta modelo primário -> secundário -> JSON fixo"""
     try:
-        return call_gemini_model(prompt, PRIMARY_MODEL, max_output_tokens)
-    except Exception as e1:
-        print("Erro no modelo primário:", e1)
+        response = requests.post(BASE_URL, headers={"Content-Type": "application/json"}, json=data, timeout=15)
+        response.raise_for_status()
+        resp_json = response.json()
+        text = resp_json["candidates"][0]["content"]["parts"][0]["text"]
+        return text.strip()
+    except Exception as e:
+        print("Erro na chamada ao Gemini:", e)
+        return '{"narrativa": "O encontro começa...", "choices": ["Atacar", "Defender", "Usar Item"]}'
 
-    try:
-        return call_gemini_model(prompt, SECONDARY_MODEL, max_output_tokens)
-    except Exception as e2:
-        print("Erro no modelo secundário:", e2)
-
-    print("Todos os modelos falharam, usando narrativa padrão")
-    return '{"narrativa": ["O encontro começa..."], "escolhas": ["Atacar", "Defender", "Usar Item"], "status": {}, "turn_result": {}}'
-
-# =====================================
-# UTILITÁRIOS
-# =====================================
 def safe_json_parse(text: str) -> dict:
-    """Converte string JSON para dict seguro"""
     try:
         data = json.loads(text)
     except:
@@ -101,12 +79,13 @@ def safe_json_parse(text: str) -> dict:
         narrativa = [line.strip() for line in data["narrativa"].split("\n") if line.strip()]
 
     escolhas = data.get("escolhas") or data.get("choices") or ["Atacar", "Defender", "Usar Item"]
+
     status = data.get("status") or {}
-    default_turn_result = {
+
+    turn_result = data.get("turn_result") or {
         "player": {"hp_change": 0, "stamina_change": 0},
         "enemy": {"hp_change": 0, "stamina_change": 0}
     }
-    turn_result = {**default_turn_result, **data.get("turn_result", {})}
 
     return {
         "narrativa": narrativa,
@@ -116,47 +95,45 @@ def safe_json_parse(text: str) -> dict:
     }
 
 def check_game_over(player: dict, enemy: dict) -> Optional[dict]:
-    """Verifica se o jogo terminou"""
     if player["hp"] <= 0:
         return {"game_over": True, "winner": "enemy", "loser": "player"}
     elif enemy["hp"] <= 0:
         return {"game_over": True, "winner": "player", "loser": "enemy"}
     return None
 
-# =====================================
-# FUNÇÕES DE GERAÇÃO
-# =====================================
+# ---------------- LÓGICA DO TURNO ----------------
 def generate_dynamic_turn(player_action: str, game_state: dict) -> dict:
-    # Inclui descrição e ataque especial da lenda no prompt
+    enemy_desc = game_state['enemy'].get('descricao', '')
+    player_class = game_state['player'].get('classe', 'Guerreiro')
+
     prompt = f"""
-Você é um mestre de RPG.
-O jogador digitou: "{player_action}".
-Capítulo: {game_state['chapter']}
-O jogador: {json.dumps(game_state['player'], ensure_ascii=False)}
-A lenda: {json.dumps(game_state['enemy'], ensure_ascii=False)}
+    Você é um mestre de RPG.
+    O jogador ({player_class}) digitou: "{player_action}".
+    Estado atual do jogo: {json.dumps(game_state, ensure_ascii=False)}
+    Contexto da lenda ({game_state['enemy']['nome']}): {enemy_desc}
 
-História da lenda: {game_state['enemy'].get('descricao')}
-Ataque especial: {game_state['enemy'].get('ataqueEspecial')}
-
-Regras:
-- Respeite a stamina de cada personagem em cada turno
-- Use a história, descrição e ataque especial da lenda
-- Não coloque HP e stamina na narrativa
-- Narre a luta de forma zoeira e cômica
-- Sugira 3 próximas ações
-- Forneça resumo das mudanças de HP/Stamina separadamente no campo 'turn_result'
-- Responda apenas em JSON válido no formato:
-{{
-  "narrativa": ["..."],
-  "escolhas": ["...", "...", "..."],
-  "status": {{
-    "player": {{...}},
-    "enemy": {{...}}
-  }},
-  "turn_result": {{}}
-}}
-"""
-    text = call_gemini_with_fallback(prompt, max_output_tokens=1000)
+    Regras:
+    - Use a descrição da lenda e a classe do jogador para criar o contexto da luta.
+    - Não coloque o HP e stamina dos personagens na narrativa
+    - Não gere textos gigantes
+    - Narre a luta de forma zoeira e cômica.
+    - Mostre ações do jogador e da lenda.
+    - Atualize HP de ambos se necessário.
+    - Sugira 3 próximas ações.
+    - Forneça um resumo das mudanças de HP separadamente no campo 'turn_result', no formato:
+    {{
+        "player": {{"hp_change": -10, "stamina_change": -5}},
+        "enemy": {{"hp_change": -5, "stamina_change": -10}}
+    }}
+    - Responda apenas em JSON válido no formato:
+    {{
+        "narrativa": ["..."],
+        "escolhas": ["...", "...", "..."],
+        "status": {{"player": {{...}}, "enemy": {{...}}}},
+        "turn_result": {{}}
+    }}
+    """
+    text = call_gemini(prompt, max_output_tokens=1000)
     data = safe_json_parse(text)
 
     if not data["status"]:
@@ -171,41 +148,37 @@ Regras:
 
     return data
 
+# ---------------- LÓGICA INICIAL ----------------
 def generate_initial_narrative(game_state: dict) -> dict:
-    # Inclui descrição e ataque especial da lenda no prompt
+    enemy_desc = game_state['enemy'].get('descricao', '')
+    player_class = game_state['player'].get('classe', 'Guerreiro')
+
     prompt = f"""
-Você é um mestre de RPG maluco e engraçado.
-Inicie o capítulo: {game_state['chapter']}
-O jogador: {json.dumps(game_state['player'], ensure_ascii=False)}
-A lenda: {json.dumps(game_state['enemy'], ensure_ascii=False)}
+        Você é um mestre de RPG maluco e engraçado.
+        Inicie o capítulo: {game_state['chapter']}.
+        O jogador ({player_class}): {json.dumps(game_state['player'], ensure_ascii=False)}
+        A lenda ({game_state['enemy']['nome']}): {enemy_desc}
 
-História da lenda: {game_state['enemy'].get('descricao')}
-Ataque especial: {game_state['enemy'].get('ataqueEspecial')}
-
-Regras:
-- Narre a entrada da lenda e do jogador de forma zoeira
-- Use a descrição e ataque especial da lenda
-- Sugira 3 ações iniciais
-- Responda apenas em JSON válido no formato:
-{{
-  "narrativa": ["..."],
-  "escolhas": ["...", "...", "..."],
-  "status": {{
-    "player": {{...}},
-    "enemy": {{...}}
-  }}
-}}
-"""
-    text = call_gemini_with_fallback(prompt, max_output_tokens=800)
+        Regras:
+        - Use a classe do jogador e a descrição da lenda para criar o contexto da batalha.
+        - Não coloque o HP e stamina dos personagens na narrativa
+        - Narre a entrada da lenda e do jogador de forma zoeira e engraçada.
+        - Sugira 3 ações iniciais.
+        - Responda apenas em JSON válido no formato:
+        {{
+            "narrativa": ["..."],
+            "escolhas": ["...", "...", "..."],
+            "status": {{"player": {{...}}, "enemy": {{...}}}}
+        }}
+    """
+    text = call_gemini(prompt, max_output_tokens=800)
     data = safe_json_parse(text)
 
     if not data["status"]:
         data["status"] = {"player": game_state["player"], "enemy": game_state["enemy"]}
     return data
 
-# =====================================
-# ENDPOINTS
-# =====================================
+# ---------------- ENDPOINTS ----------------
 @llm_router.post("/start_game")
 def start_game(request: StartGameRequest):
     game_state = request.state.dict()
