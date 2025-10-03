@@ -22,7 +22,7 @@ class PlayerState(BaseModel):
     max_hp: int
     stamina: int
     max_stamina: int
-    inventario: List[str]
+    # inventario removido
 
 class EnemyState(BaseModel):
     nome: str

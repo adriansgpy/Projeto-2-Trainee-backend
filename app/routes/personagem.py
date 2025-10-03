@@ -5,7 +5,7 @@ from bson import ObjectId
 from app.routes.auth import get_current_user
 from bson.json_util import dumps
 import json
-from typing import List, Optional
+from typing import Optional, List
 
 router_personagem = APIRouter(prefix="/personagens", tags=["personagens"])
 
@@ -19,10 +19,9 @@ class Character(BaseModel):
     hpAtual: int
     stamina: int
     ataqueEspecial: str
-    inventario: List[str] = []
-    image: Optional[str] = ""
+    image: Optional[str] = ""  # Mantido opcional
 
-@router_personagem.post("/")
+# ---------------- CRIAR PERSONAGEM ----------------
 @router_personagem.post("/")
 def create_character(character: Character, username: str = Depends(get_current_user)):
     existing = characters_collection.find_one({
@@ -42,12 +41,13 @@ def create_character(character: Character, username: str = Depends(get_current_u
     created = characters_collection.find_one({"_id": result.inserted_id})
     return json.loads(dumps(created))
 
-
+# ---------------- LISTAR PERSONAGENS ----------------
 @router_personagem.get("/")
 def get_characters(username: str = Depends(get_current_user)):
     chars = list(characters_collection.find({"owner_username": username}))
     return json.loads(dumps(chars))
 
+# ---------------- OBTER PERSONAGEM ----------------
 @router_personagem.get("/{character_id}")
 def get_character(character_id: str, username: str = Depends(get_current_user)):
     try:
@@ -62,6 +62,7 @@ def get_character(character_id: str, username: str = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Personagem não encontrado")
     return json.loads(dumps(char))
 
+# ---------------- DELETAR PERSONAGEM ----------------
 @router_personagem.delete("/{character_id}")
 def delete_character(character_id: str, username: str = Depends(get_current_user)):
     try:
@@ -79,6 +80,7 @@ def delete_character(character_id: str, username: str = Depends(get_current_user
         )
     return {"message": "Personagem deletado"}
 
+# ---------------- ATUALIZAR PERSONAGEM ----------------
 @router_personagem.patch("/{character_id}")
 def update_character(character_id: str, data: dict, username: str = Depends(get_current_user)):
     try:
