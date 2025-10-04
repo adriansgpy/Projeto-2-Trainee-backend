@@ -14,7 +14,6 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 24 * 60
 users_collection = get_users_collection()
 router_auth = APIRouter(prefix="/auth", tags=["auth"])
 
-# 🔹 Usando argon2
 pwd_context = CryptContext(
     schemes=["argon2"],
     deprecated="auto"

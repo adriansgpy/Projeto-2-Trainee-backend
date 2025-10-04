@@ -12,7 +12,7 @@ BASE_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:gen
 # ---------------- MODELOS ----------------
 class PlayerState(BaseModel):
     nome: str
-    classe: Optional[str] = "Guerreiro"  # <- classe do jogador
+    classe: Optional[str] = "Guerreiro"  #fallbakc generico
     hp: int
     max_hp: int
     stamina: int
@@ -43,9 +43,11 @@ class PlayerAction(BaseModel):
     state: GameState
 
 # ---------------- ROUTER ----------------
+
 llm_router = APIRouter(prefix="/llm", tags=["LLM"])
 
-# ---------------- FUNÇÕES AUXILIARES ----------------
+# ---------------- FUNCOES AUXILIARES ----------------
+
 def call_gemini(prompt: str, max_output_tokens: int = 1000) -> str:
     data = {
         "contents": [{"parts": [{"text": prompt}]}],
