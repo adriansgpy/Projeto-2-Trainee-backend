@@ -25,10 +25,8 @@ class Character(BaseModel):
     nome: str
     role: str
     hpAtual: int
-    stamina: int
     ataqueEspecial: str
-    inventario: List[str] = []
-    image: Optional[str] = ""
+    image: Optional[str] = ""  # Mantido opcional
 
 #Rota: Criar Personagem (POST)
 @router_personagem.post("/")

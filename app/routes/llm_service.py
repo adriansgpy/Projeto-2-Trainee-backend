@@ -17,6 +17,7 @@ BASE_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:gen
 #Classes modelos
 class PlayerState(BaseModel):
     nome: str
+    classe: Optional[str] = "Guerreiro"  #fallbakc generico
     hp: int
     max_hp: int
     stamina: int
@@ -25,10 +26,12 @@ class PlayerState(BaseModel):
 
 class EnemyState(BaseModel):
     nome: str
+    descricao: Optional[str] = ""
     hp: int
     max_hp: int
     stamina: int
     max_stamina: int
+
 
 class GameState(BaseModel):
     player: PlayerState
@@ -66,7 +69,6 @@ def call_gemini(prompt: str, max_output_tokens: int = 1000) -> str:
 
 #Converter o output do LLM em JSON válido
 def safe_json_parse(text: str) -> dict:
-    """Converte string JSON para dict, transforma narrativa em lista e normaliza turn_result"""
     try:
         data = json.loads(text)
     except:
@@ -102,7 +104,6 @@ def safe_json_parse(text: str) -> dict:
 
 #Checar se o jogo já acabou
 def check_game_over(player: dict, enemy: dict) -> Optional[dict]:
-    """Retorna um dict com resultado se algum HP for zero, ou None se o jogo continuar."""
     if player["hp"] <= 0:
         return {"game_over": True, "winner": "enemy", "loser": "player"}
     elif enemy["hp"] <= 0:
@@ -112,33 +113,34 @@ def check_game_over(player: dict, enemy: dict) -> Optional[dict]:
 
 #Gerar turno com base no desenvolvimento do jogo (gerado a partir das ações do jogador)
 def generate_dynamic_turn(player_action: str, game_state: dict) -> dict:
+    enemy_desc = game_state['enemy'].get('descricao', '')
+    player_class = game_state['player'].get('classe', 'Guerreiro')
+
     prompt = f"""
     Você é um mestre de RPG.
-    O jogador digitou: "{player_action}".
+    O jogador ({player_class}) digitou: "{player_action}".
     Estado atual do jogo: {json.dumps(game_state, ensure_ascii=False)}
+    Contexto da lenda ({game_state['enemy']['nome']}): {enemy_desc}
 
     Regras:
-    - Respeite a stamina de cada personagem em cada turno
+    - Use a descrição da lenda e a classe do jogador para criar o contexto da luta.
     - Não coloque o HP e stamina dos personagens na narrativa
     - Não gere textos gigantes
     - Narre a luta de forma zoeira e cômica.
     - Mostre ações do jogador e da lenda.
-    - Atualize HP e stamina de ambos se necessário.
+    - Atualize HP de ambos se necessário.
     - Sugira 3 próximas ações.
-    - Forneça um resumo das mudanças de HP/Stamina separadamente no campo 'turn_result', no formato:
+    - Forneça um resumo das mudanças de HP separadamente no campo 'turn_result', no formato:
     {{
-    "player": {{"hp_change": -10, "stamina_change": -5}},
-    "enemy": {{"hp_change": -5, "stamina_change": -10}}
+        "player": {{"hp_change": -10, "stamina_change": -5}},
+        "enemy": {{"hp_change": -5, "stamina_change": -10}}
     }}
     - Responda apenas em JSON válido no formato:
     {{
-    "narrativa": ["..."],
-    "escolhas": ["...", "...", "..."],
-    "status": {{
-        "player": {{...}},
-        "enemy": {{...}}
-    }},
-    "turn_result": {{}}
+        "narrativa": ["..."],
+        "escolhas": ["...", "...", "..."],
+        "status": {{"player": {{...}}, "enemy": {{...}}}},
+        "turn_result": {{}}
     }}
     """
     text = call_gemini(prompt, max_output_tokens=1000)
@@ -154,31 +156,32 @@ def generate_dynamic_turn(player_action: str, game_state: dict) -> dict:
     if game_over:
         data["game_over"] = game_over
 
-
     return data
 
 
 #Gerar narrativa inicial utilizando o contexto das lendas 
 def generate_initial_narrative(game_state: dict) -> dict:
+    enemy_desc = game_state['enemy'].get('descricao', '')
+    player_class = game_state['player'].get('classe', 'Guerreiro')
+
     prompt = f"""
         Você é um mestre de RPG maluco e engraçado.
         Inicie o capítulo: {game_state['chapter']}.
-        O jogador: {json.dumps(game_state['player'], ensure_ascii=False)}
-        A lenda: {json.dumps(game_state['enemy'], ensure_ascii=False)}
+        O jogador ({player_class}): {json.dumps(game_state['player'], ensure_ascii=False)}
+        A lenda ({game_state['enemy']['nome']}): {enemy_desc}
 
         Regras:
-        - Narre a entrada da lenda e do jogador de forma zoeira.
+        - Use a classe do jogador e a descrição da lenda para criar o contexto da batalha.
+        - Não coloque o HP e stamina dos personagens na narrativa
+        - Narre a entrada da lenda e do jogador de forma zoeira e engraçada.
         - Sugira 3 ações iniciais.
         - Responda apenas em JSON válido no formato:
         {{
-        "narrativa": ["..."],
-        "escolhas": ["...", "...", "..."],
-        "status": {{
-            "player": {{...}},
-            "enemy": {{...}}
+            "narrativa": ["..."],
+            "escolhas": ["...", "...", "..."],
+            "status": {{"player": {{...}}, "enemy": {{...}}}}
         }}
-        }}
-        """
+    """
     text = call_gemini(prompt, max_output_tokens=800)
     data = safe_json_parse(text)
 
@@ -199,7 +202,7 @@ def start_game(request: StartGameRequest):
 def process_turn(action: PlayerAction):
     game_state = action.state.dict()
     response = generate_dynamic_turn(action.action, game_state)
-    
+
     game_over = check_game_over(response["status"]["player"], response["status"]["enemy"])
     if game_over:
         response["game_over"] = game_over
