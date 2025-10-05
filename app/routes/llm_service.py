@@ -1,14 +1,20 @@
+"""
+API utilizada no front-end Angular contendo todas as rotas, classes modelos e funções auxiliares para o RPG textual funcionar
+"""
+
+#imports
 from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import List, Optional
 import requests
 import json
 
+#Configurações do LLM
 GOOGLE_API_KEY = "AIzaSyCSB2VvJkwkCcHbXL5m1ganWJ3xn15Pui8"
-
 MODEL = "gemini-2.0-flash"  
 BASE_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent?key={GOOGLE_API_KEY}"
 
+#Classes modelos
 class PlayerState(BaseModel):
     nome: str
     hp: int
@@ -38,8 +44,11 @@ class PlayerAction(BaseModel):
     action: str
     state: GameState
 
+#Router do LLM
 llm_router = APIRouter(prefix="/llm", tags=["LLM"])
 
+
+#Invocar o gemini com prompt e output tokens
 def call_gemini(prompt: str, max_output_tokens: int = 1000) -> str:
     data = {
         "contents": [{"parts": [{"text": prompt}]}],
@@ -53,10 +62,9 @@ def call_gemini(prompt: str, max_output_tokens: int = 1000) -> str:
         return text.strip()
     except Exception as e:
         print("Erro na chamada ao Gemini:", e)
-        # fallback simples
         return '{"narrative": "O encontro começa...", "choices": ["Atacar", "Defender", "Usar Item"]}'
 
-
+#Converter o output do LLM em JSON válido
 def safe_json_parse(text: str) -> dict:
     """Converte string JSON para dict, transforma narrativa em lista e normaliza turn_result"""
     try:
@@ -92,6 +100,7 @@ def safe_json_parse(text: str) -> dict:
     }
 
 
+#Checar se o jogo já acabou
 def check_game_over(player: dict, enemy: dict) -> Optional[dict]:
     """Retorna um dict com resultado se algum HP for zero, ou None se o jogo continuar."""
     if player["hp"] <= 0:
@@ -101,7 +110,7 @@ def check_game_over(player: dict, enemy: dict) -> Optional[dict]:
     return None
 
 
-
+#Gerar turno com base no desenvolvimento do jogo (gerado a partir das ações do jogador)
 def generate_dynamic_turn(player_action: str, game_state: dict) -> dict:
     prompt = f"""
     Você é um mestre de RPG.
@@ -149,7 +158,7 @@ def generate_dynamic_turn(player_action: str, game_state: dict) -> dict:
     return data
 
 
-
+#Gerar narrativa inicial utilizando o contexto das lendas 
 def generate_initial_narrative(game_state: dict) -> dict:
     prompt = f"""
         Você é um mestre de RPG maluco e engraçado.
@@ -178,13 +187,14 @@ def generate_initial_narrative(game_state: dict) -> dict:
     return data
 
 
-
+#Rota: Iniciar o jogo
 @llm_router.post("/start_game")
 def start_game(request: StartGameRequest):
     game_state = request.state.dict()
     response = generate_initial_narrative(game_state)
     return response
 
+#Rota: Processar o turno 
 @llm_router.post("/turn")
 def process_turn(action: PlayerAction):
     game_state = action.state.dict()

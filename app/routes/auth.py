@@ -1,10 +1,15 @@
+"""
+API utilizada para cadastrar, realizar login com JWT, ver dados da conta e alterar senha
+"""
+
+#imports 
 from fastapi import APIRouter, HTTPException, status, Depends
 from datetime import timedelta, datetime
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from passlib.context import CryptContext
 from app.database import get_users_collection
-from app.models.UsuarioModel import UsuarioModel, UsuarioLogin
+from pydantic import BaseModel
 
 SECRET_KEY = "minhachave123" 
 ALGORITHM = "HS256"
@@ -13,11 +18,35 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 24 * 60
 users_collection = get_users_collection()
 router_auth = APIRouter(prefix="/auth", tags=["auth"])
 
-# 🔹 Usando argon2
+#Criptografia com argon2
 pwd_context = CryptContext(
     schemes=["argon2"],
     deprecated="auto"
 )
+
+
+#Classe modelo para usuário 
+class UsuarioModel(BaseModel):
+
+    nomeUsuario: str
+    nome: str
+    senha: str
+
+class Config:
+    orm_mode = True
+
+class UsuarioLogin(BaseModel):
+    nomeUsuario: str
+    senha: str
+
+class UsuarioResponse(BaseModel):
+    id: str | None = None
+    nomeUsuario: str
+    nome: str
+
+    class Config:
+        orm_mode = True
+
 
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
@@ -31,7 +60,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-# ---------------- SIGNUP ----------------
+#Rota: Cadastro de conta
 @router_auth.post("/signup")
 def register_user(usuario: UsuarioModel):
     if users_collection.find_one({"usuario": usuario.nomeUsuario}):
@@ -47,7 +76,7 @@ def register_user(usuario: UsuarioModel):
     users_collection.insert_one(user)
     return {"msg": "Usuário registrado com sucesso"}
 
-# ---------------- LOGIN ----------------
+#Rota: Login
 @router_auth.post("/login")
 def realizar_login(login_data: UsuarioLogin):
     user = users_collection.find_one({"usuario": login_data.nomeUsuario})
@@ -58,7 +87,6 @@ def realizar_login(login_data: UsuarioLogin):
     if not hashed_password:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Hash da senha inválido no banco")
 
-    # Verifica senha com tratamento seguro
     try:
         if not verify_password(login_data.senha, hashed_password):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Senha incorreta")

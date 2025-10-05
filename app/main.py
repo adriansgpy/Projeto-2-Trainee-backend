@@ -1,3 +1,4 @@
+#imports
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes.auth import router_auth
@@ -8,6 +9,8 @@ app = FastAPI()
 origins = [
     "http://localhost:4200",
 ]
+
+#Inicialização da API modularizada
 
 app.add_middleware(
     CORSMiddleware,
